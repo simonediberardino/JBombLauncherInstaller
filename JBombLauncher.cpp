@@ -22,9 +22,8 @@ std::string getEnvVar(const char* varName) {
     }
     return ""; // Return empty string if failed
 }
-bool downloadFile(const std::string& url, const std::string& outputPath) {
-    std::cout << "Attempting to download from URL: " << url << std::endl;
 
+bool downloadFile(const std::string& url, const std::string& outputPath) {
     std::string host;
     std::string path;
 
@@ -106,9 +105,6 @@ bool downloadFile(const std::string& url, const std::string& outputPath) {
     return true;
 }
 
-
-
-
 // Function to check if Java is installed
 bool isJavaInstalled() {
     return system("where java >nul 2>&1") == 0;
@@ -142,21 +138,45 @@ void launchGame(const std::string& command) {
 }
 
 int main() {
-    const std::string appDataDir = getEnvVar("APPDATA") + "\\JBomb";  // Store files in AppData
-    const std::string binDir = appDataDir + "\\bin";  // Create a bin directory under JBomb
+    const std::string localAppDataDir = getEnvVar("LOCALAPPDATA") + "\\JBomb";  // Store files in Local AppData
+    const std::string binDir = localAppDataDir + "\\bin";  // Create a bin directory under JBomb
     const std::string jbombJar = binDir + "\\" + fileName;  // Path for JBombLauncher.jar
-    const std::string installer = appDataDir + "\\jdk8.exe";  // Java installer path in AppData
+    const std::string installer = localAppDataDir + "\\jdk8.exe";  // Java installer path in Local AppData
     const std::string jbombJarUrl = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/" + fileName;
 
     // Create JBomb directory if it does not exist
-    if (!std::filesystem::exists(appDataDir)) {
-        createDirectory(appDataDir);
+    if (!std::filesystem::exists(localAppDataDir)) {
+        createDirectory(localAppDataDir);
     }
 
     // Create the bin directory if it does not exist
     if (!std::filesystem::exists(binDir)) {
         createDirectory(binDir);
     }
+    std::string welcomeMessage = "Welcome to JBomb Launcher!";
+    std::string checkRequirements = "We'll check your system requirements and launch your launcher shortly.";
+    std::string patienceMessage = "Please be patient as we get everything ready for you!";
+
+    // Manually calculate the maximum length
+    size_t maxLength = welcomeMessage.length(); // Start with the first message length
+
+    // Compare lengths of the other messages
+    if (checkRequirements.length() > maxLength) {
+        maxLength = checkRequirements.length();
+    }
+    if (patienceMessage.length() > maxLength) {
+        maxLength = patienceMessage.length();
+    }
+
+    // Create the top border
+    std::string border(maxLength + 4, '*');
+    std::cout << border << std::endl;
+
+    // Print each message with padding
+    std::cout << "* " << welcomeMessage << std::string(maxLength - welcomeMessage.length(), ' ') << " *" << std::endl;
+    std::cout << "* " << checkRequirements << std::string(maxLength - checkRequirements.length(), ' ') << " *" << std::endl;
+    std::cout << "* " << patienceMessage << std::string(maxLength - patienceMessage.length(), ' ') << " *" << std::endl;
+    std::cout << border << std::endl << std::endl;
 
     // Check for installed Java version
     if (!isJavaInstalled()) {
@@ -171,9 +191,6 @@ int main() {
             return 1;
         }
     }
-    else {
-        std::cout << "Java found, skipping installation." << std::endl;
-    }
 
     // Check for jbomblauncher.jar
     if (!std::filesystem::exists(jbombJar)) {
@@ -185,9 +202,6 @@ int main() {
             std::cerr << "Failed to download JBomb Launcher." << std::endl;
             return 1;
         }
-    }
-    else {
-        std::cout << "JBomb Launcher is already installed." << std::endl;
     }
 
     std::cout << "Launching JBomb Launcher..." << std::endl;
