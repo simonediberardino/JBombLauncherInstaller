@@ -55,11 +55,6 @@ bool isJavaInstalled() {
     return system("where java >nul 2>&1") == 0;
 }
 
-// Function to execute a command
-void executeCommand(const std::string& command) {
-    system(command.c_str());
-}
-
 // Function to create a directory
 bool createDirectory(const std::string& path) {
     return std::filesystem::create_directory(path);
@@ -99,10 +94,41 @@ std::string getDesktopPath() {
     return defaultDesktopPath;
 }
 
+// Function to launch the JBomb Launcher and exit the program immediately
+void launchGame(const std::string& command) {
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+
+    // Start the child process
+    if (!CreateProcess(
+        nullptr,            // No module name (use command line)
+        const_cast<char*>(command.c_str()), // Command line
+        nullptr,           // Process handle not inheritable
+        nullptr,           // Thread handle not inheritable
+        FALSE,             // Set handle inheritance to FALSE
+        0,                 // No creation flags
+        nullptr,           // Use parent's environment block
+        nullptr,           // Use parent's starting directory 
+        &si,               // Pointer to STARTUPINFO structure
+        &pi)               // Pointer to PROCESS_INFORMATION structure
+        ) {
+        std::cerr << "Failed to launch the game. Error: " << GetLastError() << std::endl;
+    }
+
+    // Close process and thread handles. We don't need them anymore.
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+}
+
 // Main function
 int main() {
     const std::string jbombDir = getEnvVar("ProgramFiles") + "\\JBomb";  // Dynamic Program Files directory
-    const std::string jbombJar = jbombDir + "\\" + fileName;
+    const std::string binDir = jbombDir + "\\bin"; // Create a bin directory under JBomb
+    const std::string jbombJar = binDir + "\\" + fileName; // Path for JBombLauncher.jar
     const std::string installer = jbombDir + "\\jdk8.exe"; // Save directly in the JBomb directory
     const std::string jbombJarUrl = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/" + fileName;
 
@@ -110,6 +136,14 @@ int main() {
     if (!std::filesystem::exists(jbombDir)) {
         if (!createDirectory(jbombDir)) {
             std::cerr << "Failed to create JBomb directory." << std::endl;
+            return 1;
+        }
+    }
+
+    // Create the bin directory if it does not exist
+    if (!std::filesystem::exists(binDir)) {
+        if (!createDirectory(binDir)) {
+            std::cerr << "Failed to create bin directory." << std::endl;
             return 1;
         }
     }
@@ -153,11 +187,10 @@ int main() {
 
     // Launch the JBomb Launcher immediately after downloading
     std::cout << "Launching JBomb Launcher..." << std::endl;
-    executeCommand("java -jar \"" + jbombJar + "\"");
+    launchGame("java -jar \"" + jbombJar + "\"");
 
     // Automatically determine the Desktop directory
     std::string desktopPath = getDesktopPath();
-
     std::string symlinkPath = desktopPath + "\\JBombLauncher.lnk";
     createSymlink(jbombJar, symlinkPath);
 
