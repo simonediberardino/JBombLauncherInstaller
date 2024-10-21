@@ -137,22 +137,8 @@ void launchGame(const std::string& command) {
     CloseHandle(pi.hThread);
 }
 
-int main() {
-    const std::string localAppDataDir = getEnvVar("LOCALAPPDATA") + "\\JBomb";  // Store files in Local AppData
-    const std::string binDir = localAppDataDir + "\\bin";  // Create a bin directory under JBomb
-    const std::string jbombJar = binDir + "\\" + fileName;  // Path for JBombLauncher.jar
-    const std::string installer = localAppDataDir + "\\jdk8.exe";  // Java installer path in Local AppData
-    const std::string jbombJarUrl = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/" + fileName;
-
-    // Create JBomb directory if it does not exist
-    if (!std::filesystem::exists(localAppDataDir)) {
-        createDirectory(localAppDataDir);
-    }
-
-    // Create the bin directory if it does not exist
-    if (!std::filesystem::exists(binDir)) {
-        createDirectory(binDir);
-    }
+// Function to display welcome messages in a box
+void displayWelcomeMessages() {
     std::string welcomeMessage = "Welcome to JBomb Launcher!";
     std::string checkRequirements = "We'll check your system requirements and launch your launcher shortly.";
     std::string patienceMessage = "Please be patient as we get everything ready for you!";
@@ -177,31 +163,73 @@ int main() {
     std::cout << "* " << checkRequirements << std::string(maxLength - checkRequirements.length(), ' ') << " *" << std::endl;
     std::cout << "* " << patienceMessage << std::string(maxLength - patienceMessage.length(), ' ') << " *" << std::endl;
     std::cout << border << std::endl << std::endl;
+}
 
-    // Check for installed Java version
+// Function to setup directories
+void setupDirectories(const std::string& localAppDataDir, const std::string& binDir) {
+    // Create JBomb directory if it does not exist
+    if (!std::filesystem::exists(localAppDataDir)) {
+        createDirectory(localAppDataDir);
+    }
+
+    // Create the bin directory if it does not exist
+    if (!std::filesystem::exists(binDir)) {
+        createDirectory(binDir);
+    }
+}
+
+// Function to handle Java installation
+bool handleJavaInstallation(const std::string& installer) {
     if (!isJavaInstalled()) {
         std::cout << "Java not found, downloading and installing Java..." << std::endl;
         if (downloadFile(javaInstaller, installer)) {
             system((installer + " /s").c_str());
             std::cout << "Java installed successfully." << std::endl;
             std::filesystem::remove(installer); // Remove installer after installation
+            return true;
         }
         else {
             std::cerr << "Failed to download Java installer." << std::endl;
-            return 1;
+            return false;
         }
     }
+    return true;
+}
 
-    // Check for jbomblauncher.jar
+// Function to check and download JBomb Launcher
+bool checkAndDownloadJBombLauncher(const std::string& jbombJar, const std::string& jbombJarUrl) {
     if (!std::filesystem::exists(jbombJar)) {
         std::cout << "Downloading JBomb Launcher..." << std::endl;
         if (downloadFile(jbombJarUrl, jbombJar)) {
             std::cout << "JBomb Launcher downloaded successfully." << std::endl;
+            return true;
         }
         else {
             std::cerr << "Failed to download JBomb Launcher." << std::endl;
-            return 1;
+            return false;
         }
+    }
+    return true;
+}
+
+int main() {
+    const std::string localAppDataDir = getEnvVar("LOCALAPPDATA") + "\\JBomb";  // Store files in Local AppData
+    const std::string binDir = localAppDataDir + "\\bin";  // Create a bin directory under JBomb
+    const std::string jbombJar = binDir + "\\" + fileName;  // Path for JBombLauncher.jar
+    const std::string installer = localAppDataDir + "\\jdk8.exe";  // Java installer path in Local AppData
+    const std::string jbombJarUrl = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/" + fileName;
+
+    setupDirectories(localAppDataDir, binDir);
+    displayWelcomeMessages();
+
+    // Handle Java installation
+    if (!handleJavaInstallation(installer)) {
+        return 1; // Exit if Java installation fails
+    }
+
+    // Check for and download JBomb Launcher
+    if (!checkAndDownloadJBombLauncher(jbombJar, jbombJarUrl)) {
+        return 1; // Exit if JBomb Launcher download fails
     }
 
     std::cout << "Launching JBomb Launcher..." << std::endl;
