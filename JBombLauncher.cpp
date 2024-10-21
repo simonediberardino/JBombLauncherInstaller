@@ -4,7 +4,7 @@
 #include <windows.h>
 #include <string>
 #include <filesystem>
-#include <curl/curl.h>
+#include <winhttp.h> // Include the WinHTTP library
 
 const std::string javaInstaller = "https://javadl.oracle.com/webapps/download/AutoDL?BundleId=236886_42970487e3af4f5aa5bca3f542482c60";
 const std::string owner = "simonediberardino";
@@ -22,33 +22,92 @@ std::string getEnvVar(const char* varName) {
     }
     return ""; // Return empty string if failed
 }
-
-// Function to download a file using libcurl
 bool downloadFile(const std::string& url, const std::string& outputPath) {
-    CURL* curl;
-    FILE* fp;
-    CURLcode res;
+    std::cout << "Attempting to download from URL: " << url << std::endl;
 
-    curl = curl_easy_init();
-    if (curl) {
-        // Use fopen_s for safer file opening
-        errno_t err = fopen_s(&fp, outputPath.c_str(), "wb");
-        if (err != 0 || fp == nullptr) {
-            std::cerr << "Failed to open file for writing: " << outputPath << std::endl;
-            return false;
-        }
+    std::string host;
+    std::string path;
 
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullptr);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        res = curl_easy_perform(curl);
-        fclose(fp);
-        curl_easy_cleanup(curl);
-        return res == CURLE_OK;
+    // Extract host and path from the URL
+    size_t protocolEnd = url.find("://") + 3; // Find end of protocol
+    size_t pathStart = url.find('/', protocolEnd); // Find start of path
+    host = url.substr(protocolEnd, pathStart - protocolEnd); // Extract host
+    path = url.substr(pathStart); // Extract path
+
+    // Initialize WinHTTP session
+    HINTERNET hSession = WinHttpOpen(L"A WinHTTP Example Program/1.0",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME,
+        WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) {
+        std::cerr << "WinHttpOpen failed. Error: " << GetLastError() << std::endl;
+        return false;
     }
-    return false;
+
+    // Connect using HTTPS port
+    HINTERNET hConnect = WinHttpConnect(hSession, std::wstring(host.begin(), host.end()).c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
+    if (!hConnect) {
+        std::cerr << "WinHttpConnect failed. Error: " << GetLastError() << std::endl;
+        WinHttpCloseHandle(hSession);
+        return false;
+    }
+
+    // Open a request with INTERNET_FLAG_SECURE for HTTPS
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", std::wstring(path.begin(), path.end()).c_str(),
+        nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+    if (!hRequest) {
+        std::cerr << "WinHttpOpenRequest failed. Error: " << GetLastError() << std::endl;
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return false;
+    }
+
+    // Send the request
+    if (WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) == FALSE) {
+        std::cerr << "WinHttpSendRequest failed. Error: " << GetLastError() << std::endl;
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return false;
+    }
+
+    // Receive the response
+    if (WinHttpReceiveResponse(hRequest, NULL) == FALSE) {
+        std::cerr << "WinHttpReceiveResponse failed. Error: " << GetLastError() << std::endl;
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return false;
+    }
+
+    // Open file for writing
+    std::ofstream outputFile(outputPath, std::ios::binary);
+    if (!outputFile) {
+        std::cerr << "Failed to open output file: " << outputPath << std::endl;
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return false;
+    }
+
+    // Read data from the response and write to file
+    DWORD bytesRead;
+    char buffer[4096];
+    while (WinHttpReadData(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        outputFile.write(buffer, bytesRead);
+    }
+
+    // Cleanup
+    outputFile.close();
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+
+    return true;
 }
+
+
+
 
 // Function to check if Java is installed
 bool isJavaInstalled() {
@@ -60,140 +119,79 @@ bool createDirectory(const std::string& path) {
     return std::filesystem::create_directory(path);
 }
 
-// Function to create a symlink to the JBombLauncher.jar in a specified directory
-void createSymlink(const std::string& target, const std::string& linkPath) {
-    try {
-        std::filesystem::create_symlink(target, linkPath);
-        std::cout << "Symbolic link created: " << linkPath << std::endl;
-    }
-    catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "Failed to create symlink: " << e.what() << std::endl;
-    }
-}
-
-// Function to get the Desktop path automatically
-std::string getDesktopPath() {
-    // Get the USERPROFILE environment variable
-    std::string userProfile = getEnvVar("USERPROFILE");
-    std::string defaultDesktopPath = userProfile + "\\Desktop"; // Default Desktop path
-
-    // Check if the default Desktop path exists
-    if (std::filesystem::exists(defaultDesktopPath)) {
-        return defaultDesktopPath;
-    }
-
-    // Check for alternative Desktop paths (like on D: drive)
-    std::string alternativeDesktopPath = "D:\\Desktop";
-    if (std::filesystem::exists(alternativeDesktopPath)) {
-        return alternativeDesktopPath;
-    }
-
-    // You can add more alternative paths if needed
-
-    std::cerr << "Desktop path not found. Defaulting to user profile Desktop." << std::endl;
-    return defaultDesktopPath;
-}
-
-// Function to launch the JBomb Launcher and exit the program immediately
+// Function to launch the JBomb Launcher in a new console
 void launchGame(const std::string& command) {
-    STARTUPINFO si;
+    STARTUPINFOW si;
     PROCESS_INFORMATION pi;
 
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    // Start the child process
-    if (!CreateProcess(
-        nullptr,            // No module name (use command line)
-        const_cast<char*>(command.c_str()), // Command line
-        nullptr,           // Process handle not inheritable
-        nullptr,           // Thread handle not inheritable
-        FALSE,             // Set handle inheritance to FALSE
-        0,                 // No creation flags
-        nullptr,           // Use parent's environment block
-        nullptr,           // Use parent's starting directory 
-        &si,               // Pointer to STARTUPINFO structure
-        &pi)               // Pointer to PROCESS_INFORMATION structure
-        ) {
+    std::wstring commandW(command.begin(), command.end()); // Convert to wide string
+
+    // Create a new console for the process
+    if (!CreateProcessW(nullptr, &commandW[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
         std::cerr << "Failed to launch the game. Error: " << GetLastError() << std::endl;
+        return; // Exit the function if process creation fails
     }
 
-    // Close process and thread handles. We don't need them anymore.
+    // Close handles to the process and thread, but let the process run independently
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 }
 
-// Main function
 int main() {
-    const std::string jbombDir = getEnvVar("ProgramFiles") + "\\JBomb";  // Dynamic Program Files directory
-    const std::string binDir = jbombDir + "\\bin"; // Create a bin directory under JBomb
-    const std::string jbombJar = binDir + "\\" + fileName; // Path for JBombLauncher.jar
-    const std::string installer = jbombDir + "\\jdk8.exe"; // Save directly in the JBomb directory
+    const std::string appDataDir = getEnvVar("APPDATA") + "\\JBomb";  // Store files in AppData
+    const std::string binDir = appDataDir + "\\bin";  // Create a bin directory under JBomb
+    const std::string jbombJar = binDir + "\\" + fileName;  // Path for JBombLauncher.jar
+    const std::string installer = appDataDir + "\\jdk8.exe";  // Java installer path in AppData
     const std::string jbombJarUrl = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/" + fileName;
 
     // Create JBomb directory if it does not exist
-    if (!std::filesystem::exists(jbombDir)) {
-        if (!createDirectory(jbombDir)) {
-            std::cerr << "Failed to create JBomb directory." << std::endl;
-            return 1;
-        }
+    if (!std::filesystem::exists(appDataDir)) {
+        createDirectory(appDataDir);
     }
 
     // Create the bin directory if it does not exist
     if (!std::filesystem::exists(binDir)) {
-        if (!createDirectory(binDir)) {
-            std::cerr << "Failed to create bin directory." << std::endl;
-            return 1;
-        }
+        createDirectory(binDir);
     }
 
     // Check for installed Java version
-    if (isJavaInstalled()) {
-        std::cout << "Java found, skipping installation." << std::endl;
-    }
-    else {
-        std::cout << "Java not found, installing Java 8..." << std::endl;
-        std::cout << "Downloading Java installer..." << std::endl;
-
-        // Download Java installer directly to the JBomb directory
+    if (!isJavaInstalled()) {
+        std::cout << "Java not found, downloading and installing Java..." << std::endl;
         if (downloadFile(javaInstaller, installer)) {
-            std::cout << "Installing Java 8..." << std::endl;
-            executeCommand(installer + " /s");
-            std::filesystem::remove(installer);  // Remove installer after installation
+            system((installer + " /s").c_str());
+            std::cout << "Java installed successfully." << std::endl;
+            std::filesystem::remove(installer); // Remove installer after installation
         }
         else {
-            std::cerr << "Failed to download Java installer. Exiting..." << std::endl;
+            std::cerr << "Failed to download Java installer." << std::endl;
             return 1;
         }
     }
+    else {
+        std::cout << "Java found, skipping installation." << std::endl;
+    }
 
     // Check for jbomblauncher.jar
-    if (std::filesystem::exists(jbombJar)) {
-        std::cout << "JBomb Launcher is already installed." << std::endl;
-    }
-    else {
+    if (!std::filesystem::exists(jbombJar)) {
         std::cout << "Downloading JBomb Launcher..." << std::endl;
-
-        // Download JBomb launcher
         if (downloadFile(jbombJarUrl, jbombJar)) {
             std::cout << "JBomb Launcher downloaded successfully." << std::endl;
         }
         else {
-            std::cerr << "Failed to download JBomb Launcher. Exiting..." << std::endl;
+            std::cerr << "Failed to download JBomb Launcher." << std::endl;
             return 1;
         }
     }
+    else {
+        std::cout << "JBomb Launcher is already installed." << std::endl;
+    }
 
-    // Launch the JBomb Launcher immediately after downloading
     std::cout << "Launching JBomb Launcher..." << std::endl;
     launchGame("java -jar \"" + jbombJar + "\"");
 
-    // Automatically determine the Desktop directory
-    std::string desktopPath = getDesktopPath();
-    std::string symlinkPath = desktopPath + "\\JBombLauncher.lnk";
-    createSymlink(jbombJar, symlinkPath);
-
-    std::cout << "Setup complete." << std::endl;
     return 0;
 }
