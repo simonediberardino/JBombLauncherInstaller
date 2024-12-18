@@ -11,3 +11,7 @@ Welcome to the **JBomb Launcher** project! This application is designed to strea
 ## Requirements
 
 - **Windows OS**: This application is designed to run on Windows due to its reliance on Windows-specific libraries.
+
+## Note
+
+- This launcher is deprecated and no longer used due to the release of the game on Steam.
